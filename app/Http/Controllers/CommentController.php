@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Comment;
 use App\CommentVote;
+use App\CommentSpam;
 use Illuminate\Http\Request;
 
 class CommentController extends Controller
@@ -13,11 +14,59 @@ class CommentController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index($pageId)
     {
-        //
+        $comments = Comment::where('page_id', $pageId)->get();
+        $commentData = [];
+        foreach ($comments as $key) {
+            $user = User::find($key->users_id);
+            $name = $user->name;
+            $replies = $this->replies($key->id);
+            $photo = $user->first()->photo_url;
+            $reply = 0;
+            $vote = 0;
+            $voteStatus = 0;
+            $spam = 0;
+            if (Auth::user()) {
+                $voteByUser = CommentVote::where('comment_id', $key->id)
+                    ->where('user_id', Auth::user()->id())->first();
+                $spamComment = CommentSpam::where('comment_id', $key->id)
+                    ->where('user_id', Auth::user()->id)->first();
+                if ($voteByUser) {
+                    $vote = 1;
+                    $voteStatus = $voteByUser->vote;
+                }
+                if ($spamComment) {
+                    $spam = 1;
+                }
+            }
+            if (sizeof($replies) > 0) {
+                $reply = 1;
+            }
+            if (!$spam) {
+                array_push($commentData, [
+                    "name" => $name,
+                    "photo_url" => (string)$photo,
+                    "comment_id" => $key->id,
+                    "comment" => $key->comment,
+                    "votes" => $key->votes,
+                    "reply" => $reply,
+                    "votedByUser" => $vote,
+                    "vote" => $voteStatus,
+                    "spam" => $spam,
+                    "replies" => $replies,
+                    "date" => $key->created_at->toDateTimeString()
+                ]);
+            }
+        }
+        $collection = collect($commentData);
+        return $collection->sortBy('votes');
     }
 
+    protected function replies()
+    {
+        
+}
     /**
      * Show the form for creating a new resource.
      *
@@ -104,11 +153,11 @@ class CommentController extends Controller
                 $comment->vote = $vote;
                 $comments->save();
             }
-            if(CommentVote::create($data))
+            if (CommentVote::create($data))
                 return "true";
         }
-        if($type == "spam"){
-            $this->validate($request,[
+        if ($type == "spam") {
+            $this->validate($request, [
                 "users_id" => 'required'
             ]);
             $comments = Comment::find($commentId);
@@ -130,7 +179,7 @@ class CommentController extends Controller
                 'user_id' => $request->users_id,
 
             ];
-            if(CommentSpam::create($data))
+            if (CommentSpam::create($data))
 
                 return "true";
         }
